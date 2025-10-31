@@ -7,11 +7,11 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
-const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+const ACCESS_TOKEN = process.env.WHATSAPP_TOKEN; // seu .env usa WHATSAPP_TOKEN
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
-// Lista de números permitidos (development/testing)
-const allowedNumbers = ["15551234567", "16315551181"]; // Coloque os números que podem receber mensagens
+// Pega os números permitidos do .env e transforma em array
+const allowedNumbers = process.env.ALLOWED_NUMBERS?.split(",") || [];
 
 app.use(express.json());
 
@@ -34,8 +34,7 @@ app.post("/", async (req, res) => {
 
     if (body.object === "whatsapp_business_account") {
       for (const entry of body.entry) {
-        const changes = entry.changes;
-        for (const change of changes) {
+        for (const change of entry.changes) {
           const value = change.value;
 
           // Mensagens recebidas
@@ -51,7 +50,7 @@ app.post("/", async (req, res) => {
                 continue;
               }
 
-              // Exemplo de resposta automática
+              // Resposta automática
               const responseBody = {
                 messaging_product: "whatsapp",
                 to: from,
@@ -64,12 +63,15 @@ app.post("/", async (req, res) => {
                   `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
                   responseBody,
                   {
-                    headers: { Authorization: `Bearer ${ACCESS_TOKEN}` }
+                    headers: {
+                      Authorization: `Bearer ${ACCESS_TOKEN}`,
+                      "Content-Type": "application/json"
+                    }
                   }
                 );
                 console.log("Mensagem enviada com sucesso:", response.data);
               } catch (err) {
-                console.error("Erro no POST webhook:", err.response?.data || err.message);
+                console.error("Erro ao enviar mensagem:", err.response?.data || err.message);
               }
             }
           }
