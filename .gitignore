@@ -1,2 +1,8 @@
-node_modules
+git add package.json package-lock.jsonnode_modules
+npm-debug.log
+yarn-error.log
+
 .env
+
+.DS_Store
+.vscode

@@ -1,89 +1,97 @@
-// app.js
-const express = require('express');
-const axios = require('axios');
+import express from "express";
+import axios from "axios";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const app = express();
+const PORT = process.env.PORT || 10000;
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+
+// Lista de números permitidos (development/testing)
+const allowedNumbers = ["15551234567"]; // Coloque os números que podem receber mensagens
+
 app.use(express.json());
 
-const PORT = process.env.PORT || 10000;
-const VERIFY_TOKEN = process.env.VERIFY_TOKEN;      // ex: vibecode (defina no Render)
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;  // seu access token
-const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID; // phone_number_id (ex: 850710884792526)
-
-app.get('/', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-
-  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-    console.log('WEBHOOK VERIFIED');
-    return res.status(200).send(challenge);
+// Verificação do webhook
+app.get("/", (req, res) => {
+  const { "hub.mode": mode, "hub.challenge": challenge, "hub.verify_token": token } = req.query;
+  if (mode === "subscribe" && token === VERIFY_TOKEN) {
+    console.log("WEBHOOK VERIFIED");
+    res.status(200).send(challenge);
+  } else {
+    res.status(403).end();
   }
-  return res.sendStatus(403);
 });
 
-app.post('/', async (req, res) => {
+// Recebendo mensagens do WhatsApp
+app.post("/", async (req, res) => {
   try {
-    console.log('Webhook received', JSON.stringify(req.body, null, 2));
+    const body = req.body;
+    console.log("Webhook received", JSON.stringify(body, null, 2));
 
-    const entry = req.body.entry?.[0];
-    const change = entry?.changes?.[0];
-    const value = change?.value;
+    if (body.object === "whatsapp_business_account") {
+      for (const entry of body.entry) {
+        const changes = entry.changes;
+        for (const change of changes) {
+          const value = change.value;
 
-    // Mensagens recebidas
-    const message = value?.messages?.[0];
-    if (message && message.type === 'text') {
-      const from = message.from;
-      const text = message.text?.body || '';
+          // Mensagens recebidas
+          if (value.messages) {
+            for (const msg of value.messages) {
+              const from = msg.from;
+              const text = msg.text?.body;
+              console.log(`Mensagem de ${from}: ${text}`);
 
-      console.log(`Mensagem de ${from}: ${text}`);
+              // Responder apenas se o número estiver na lista
+              if (!allowedNumbers.includes(from)) {
+                console.log(`Número ${from} não permitido. Ignorando.`);
+                continue;
+              }
 
-      // lógica simples de resposta
-      let reply = "Desculpa, não entendi. Tenta 'hi' ou 'menu'.";
-      const t = text.trim().toLowerCase();
-      if (t.includes('hi') || t.includes('oi') || t.includes('olá')) {
-        reply = "Hey! 👋 Eu sou um bot de teste. Diz 'menu' pra ver opções.";
-      } else if (t === 'menu') {
-        reply = "1) Ver horário\n2) Falar com humano (simulação)\nResponda com o número.";
-      } else if (t === '1') {
-        reply = `Agora: ${new Date().toLocaleString()}`;
-      } else if (t === '2') {
-        reply = "Ok, vou avisar um humano. (simulação)";
-      } else {
-        reply = `Você disse: "${text}". Diga 'menu' pra opções.`;
-      }
+              // Exemplo de resposta automática
+              const responseBody = {
+                messaging_product: "whatsapp",
+                to: from,
+                type: "text",
+                text: { body: `Recebi sua mensagem: "${text}"` }
+              };
 
-      // Envia resposta via API do WhatsApp Cloud
-      const url = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`;
-      const body = {
-        messaging_product: "whatsapp",
-        to: from,
-        text: { body: reply },
-      };
+              try {
+                const response = await axios.post(
+                  `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`,
+                  responseBody,
+                  {
+                    headers: { Authorization: `Bearer ${ACCESS_TOKEN}` }
+                  }
+                );
+                console.log("Mensagem enviada com sucesso:", response.data);
+              } catch (err) {
+                console.error("Erro no POST webhook:", err.response?.data || err.message);
+              }
+            }
+          }
 
-      await axios.post(url, body, {
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-          'Content-Type': 'application/json'
+          // Status das mensagens enviadas
+          if (value.statuses) {
+            for (const status of value.statuses) {
+              console.log(`Status da mensagem ${status.id}: ${status.status}`);
+            }
+          }
         }
-      });
-
-      console.log(`Reply enviado para ${from}`);
-    }
-
-    // Status updates (delivered, failed, etc.)
-    const statuses = value?.statuses;
-    if (statuses && statuses.length) {
-      console.log('Status update:', JSON.stringify(statuses, null, 2));
+      }
     }
 
     res.sendStatus(200);
   } catch (err) {
-    console.error('Erro no POST webhook:', err.response?.data || err.message || err);
+    console.error("Erro no webhook:", err);
     res.sendStatus(500);
   }
 });
 
+// Start server
 app.listen(PORT, () => {
   console.log(`Listening on port ${PORT}`);
 });
