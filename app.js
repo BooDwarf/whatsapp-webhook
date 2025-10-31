@@ -11,7 +11,7 @@ const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
 // Lista de números permitidos (development/testing)
-const allowedNumbers = ["15551234567"]; // Coloque os números que podem receber mensagens
+const allowedNumbers = ["15551234567", "16315551181"]; // Coloque os números que podem receber mensagens
 
 app.use(express.json());
 
